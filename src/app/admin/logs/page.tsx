@@ -7,6 +7,8 @@ export default async function LogsPage() {
 
   if (!user) redirect('/login');
 
+  const { data: dbUser } = await supabase.from('users').select('org_id').eq('id', user.id).single();
+
   const { data: visits } = await supabase
     .from('visits')
     .select(`
@@ -15,9 +17,10 @@ export default async function LogsPage() {
       check_in_time,
       check_out_time,
       status,
-      visitors ( name, email ),
+      visitors ( name, email, photo_url, company ),
       hosts ( name )
     `)
+    .eq('org_id', dbUser?.org_id)
     .order('check_in_time', { ascending: false })
     .limit(100);
 
@@ -49,7 +52,19 @@ export default async function LogsPage() {
               </tr>
             ) : visits.map(visit => (
               <tr key={visit.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-base)]/50 transition">
-                <td className="p-4 font-medium">{(visit.visitors as any)?.name || 'Unknown'}</td>
+                <td className="p-4 font-medium flex items-center gap-3">
+                  {(visit.visitors as any)?.photo_url ? (
+                     <img src={(visit.visitors as any).photo_url} alt="Profile" className="w-10 h-10 rounded-full object-cover border border-[var(--border)] shadow-sm" />
+                  ) : (
+                     <div className="w-10 h-10 rounded-full bg-[var(--primary-light)] text-[var(--primary)] text-lg flex items-center justify-center font-bold">
+                        {((visit.visitors as any)?.name || 'U').charAt(0).toUpperCase()}
+                     </div>
+                  )}
+                  <div className="flex flex-col">
+                    <span>{(visit.visitors as any)?.name || 'Unknown'}</span>
+                    <span className="text-xs text-[var(--text-muted)] font-normal">{(visit.visitors as any)?.company || ''}</span>
+                  </div>
+                </td>
                 <td className="p-4 text-[var(--text-muted)]">{(visit.hosts as any)?.name || 'Walk-in'}</td>
                 <td className="p-4 text-[var(--text-muted)] max-w-xs truncate" title={visit.purpose}>{visit.purpose}</td>
                 <td className="p-4 text-[var(--text-muted)] whitespace-nowrap">

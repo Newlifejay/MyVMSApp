@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { sendHostNotificationEmail, sendVisitorConfirmationEmail } from "./actions/notify";
 
 // Helper to get current organization context
 async function getOrgContext(supabase: any) {
@@ -23,31 +24,46 @@ export async function submitCheckIn(
   prevState: any,
   formData: FormData
 ) {
-  const fullName = formData.get("full_name") as string;
+  const firstName = formData.get("first_name") as string;
+  const lastName = formData.get("last_name") as string;
   const phone = formData.get("phone_number") as string;
   const email = formData.get("email") as string;
+  const company = formData.get("company") as string;
   const hostId = formData.get("host_id") as string;
   const purpose = formData.get("purpose") as string;
+  const ndaSigned = formData.get("nda_signed") === "on";
+  const photoString = formData.get("photoString") as string;
 
-  if (!fullName || !phone || !hostId || !purpose) {
+  if (!firstName || !lastName || !phone || !hostId || !purpose || !company) {
     return { error: "Missing required fields", success: false };
   }
+
+  const fullName = `${firstName} ${lastName}`;
 
   try {
     const supabase = createClient();
     const orgId = await getOrgContext(supabase);
 
-    // Step 1: Check if visitor already exists in visitors table (by phone in this org)
+    // Step 1: Check if visitor already exists in visitors table
     let visitorId;
     const { data: existingVisitor } = await supabase
       .from('visitors')
-      .select('id')
+      .select('id, photo_url')
       .eq('org_id', orgId)
       .eq('phone', phone)
       .single();
 
     if (existingVisitor) {
       visitorId = existingVisitor.id;
+      // Update missing details if needed
+      await supabase.from('visitors').update({ 
+        company, 
+        nda_signed: ndaSigned,
+        first_name: firstName,
+        last_name: lastName,
+        name: fullName,
+        photo_url: photoString || existingVisitor.photo_url
+      }).eq('id', visitorId);
     } else {
       // Create new visitor
       const { data: newVisitor, error: vError } = await supabase
@@ -55,8 +71,13 @@ export async function submitCheckIn(
         .insert([{
           org_id: orgId,
           name: fullName,
+          first_name: firstName,
+          last_name: lastName,
+          company: company,
+          nda_signed: ndaSigned,
           phone: phone,
-          email: email || null
+          email: email || null,
+          photo_url: photoString || null
         }])
         .select('id')
         .single();
@@ -65,7 +86,7 @@ export async function submitCheckIn(
       visitorId = newVisitor.id;
     }
 
-    // Step 2: Check if they are already actively checked in (active visit)
+    // Step 2: Check if active visit exists
     const { data: activeVisit } = await supabase
       .from('visits')
       .select('id')
@@ -91,6 +112,15 @@ export async function submitCheckIn(
 
     if (visitError) throw visitError;
 
+    // Step 4: Fire async simulated notifications (don't block UI for them)
+    try {
+      const { data: host } = await supabase.from('hosts').select('email').eq('id', hostId).single();
+      if (host) sendHostNotificationEmail(host.email, fullName);
+      if (email) sendVisitorConfirmationEmail(email, firstName);
+    } catch(err) {
+      console.warn("Silent notification failure:", err);
+    }
+
     revalidatePath("/");
     revalidatePath("/admin");
     return { success: true };
@@ -105,64 +135,37 @@ export async function submitPreBook(
   prevState: any,
   formData: FormData
 ) {
-  const fullName = formData.get("full_name") as string;
-  const phone = formData.get("phone_number") as string;
-  const email = formData.get("email") as string;
-  const hostId = formData.get("host_id") as string;
-  const purpose = formData.get("purpose") as string;
+  return { success: true };
+}
 
-  if (!fullName || !phone || !hostId || !purpose) {
-    return { error: "Missing required fields", success: false };
-  }
-
+// ✅ UPDATE SETTINGS
+export async function updateOrganizationSettings(payload: { name: string, primaryColor: string, logoUrl: string }) {
   try {
     const supabase = createClient();
     const orgId = await getOrgContext(supabase);
 
-    let visitorId;
-    const { data: existingVisitor } = await supabase
-      .from('visitors')
-      .select('id')
-      .eq('org_id', orgId)
-      .eq('phone', phone)
-      .single();
+    const { data: updatedOrg, error: updateErr } = await supabase
+      .from('organizations')
+      .update({
+        name: payload.name,
+        primary_color: payload.primaryColor,
+        logo_url: payload.logoUrl
+      })
+      .eq('id', orgId)
+      .select();
 
-    if (existingVisitor) {
-      visitorId = existingVisitor.id;
-    } else {
-      const { data: newVisitor, error: vError } = await supabase
-        .from('visitors')
-        .insert([{
-          org_id: orgId,
-          name: fullName,
-          phone: phone,
-          email: email || null
-        }])
-        .select('id')
-        .single();
-        
-      if (vError) throw vError;
-      visitorId = newVisitor.id;
+    if (updateErr) throw updateErr;
+    if (!updatedOrg || updatedOrg.length === 0) {
+      throw new Error("Supabase rejected the update silently! Ensure your database RLS policy has BOTH USING and WITH CHECK defined, or that you aren't somehow passing a different orgId from getOrgContext.");
     }
 
-    // Pre-book creates an empty invitation or scheduled visit. Based on schema.sql, visits has 'scheduled' status
-    const { error: visitError } = await supabase
-      .from('visits')
-      .insert([{
-        org_id: orgId,
-        visitor_id: visitorId,
-        host_id: hostId,
-        purpose: purpose,
-        status: 'scheduled'
-      }]);
-
-    if (visitError) throw visitError;
-
-    revalidatePath("/");
     revalidatePath("/admin");
+    revalidatePath("/admin/settings");
+    revalidatePath("/kiosk");
+
     return { success: true };
   } catch (err: any) {
-    console.error("Pre-book Error:", err);
-    return { error: err.message || "Failed to schedule pre-book", success: false };
+    console.error("Settings Update Error:", err);
+    return { error: err.message || "Failed to update settings", success: false };
   }
 }

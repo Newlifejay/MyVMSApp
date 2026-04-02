@@ -33,6 +33,23 @@ export async function sendHostNotificationEmail(hostEmail: string, visitorName: 
   }
 }
 
+export async function sendVisitorConfirmationEmail(visitorEmail: string, visitorName: string) {
+  try {
+    if (!visitorEmail) return { success: false, skipped: true };
+    console.log(`[EMAIL MOCK] Sending confirmation to visitor: ${visitorEmail}...`);
+    console.log(`[EMAIL MOCK] Subject: Welcome to the Organization, ${visitorName}!`);
+    console.log(`[EMAIL MOCK] Body: Thank you for checking in. Your NDA and visit details have been successfully recorded.`);
+    
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 600));
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to send visitor email:', error);
+    return { success: false, error: 'Failed to send visitor email' };
+  }
+}
+
 /**
  * Microsoft 365 Graph API Integration Mock
  * Synchronizes the `hosts` table from Azure AD

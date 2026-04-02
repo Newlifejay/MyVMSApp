@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -15,7 +15,16 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkEmailPhrase, setCheckEmailPhrase] = useState(false);
+  const [existingUser, setExistingUser] = useState<any>(null);
   const router = useRouter();
+
+  // On mount, check if user is already authenticated
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) setExistingUser(data.user);
+    });
+  }, []);
 
   const handleCreateTenantAndUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +74,8 @@ export default function OnboardingPage() {
         setLoading(false);
         return;
       }
+    } else {
+      user = existingUser || user; // Inherit the actively logged in user if they simply got looped back
     }
 
     // 2. Insert Organization manually with a client generated UUID
@@ -150,47 +161,51 @@ export default function OnboardingPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="input-group">
-              <label className="input-label" htmlFor="email">Your Admin Email</label>
-              <input 
-                id="email"
-                type="email" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field"
-                placeholder="admin@acme.com"
-                required
-              />
+          {!existingUser && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="input-group">
+                <label className="input-label" htmlFor="email">Your Admin Email</label>
+                <input 
+                  id="email"
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="input-field"
+                  placeholder="admin@acme.com"
+                  required
+                />
+              </div>
+              
+              <div className="input-group">
+                <label className="input-label" htmlFor="password">Password</label>
+                <input 
+                  id="password"
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input-field"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
             </div>
-            
-            <div className="input-group">
-              <label className="input-label" htmlFor="password">Password</label>
-              <input 
-                id="password"
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-          </div>
+          )}
 
           <button 
             type="submit" 
-            className="btn btn-primary w-full h-12 text-base mt-6"
-            disabled={loading || !orgName || !email || !password}
+            className="btn btn-primary w-full h-12 text-base mt-6 text-white"
+            disabled={loading || !orgName || (!existingUser && (!email || !password))}
           >
             {loading ? 'Creating Account & Workspace...' : 'Complete Setup'}
             {!loading && <ArrowRight className="w-5 h-5 ml-2" />}
           </button>
         </form>
         
-        <p className="mt-6 text-center text-sm text-[var(--text-muted)] relative z-50">
-          Already have an account? <Link href="/login" className="text-[var(--primary)] hover:underline font-medium cursor-pointer">Log in</Link>
-        </p>
+        {!existingUser && (
+          <p className="mt-6 text-center text-sm text-[var(--text-muted)] relative z-50">
+            Already have an account? <Link href="/login" className="text-[var(--primary)] hover:underline font-medium cursor-pointer">Log in</Link>
+          </p>
+        )}
       </motion.div>
     </div>
   );

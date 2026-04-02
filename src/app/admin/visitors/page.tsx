@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import PrintBadgeButton from './PrintBadgeButton';
 
 export default async function VisitorsPage() {
   const supabase = createClient();
@@ -7,9 +8,13 @@ export default async function VisitorsPage() {
 
   if (!user) redirect('/login');
 
+  const { data: dbUser } = await supabase.from('users').select('org_id').eq('id', user.id).single();
+  const { data: org } = await supabase.from('organizations').select('name, logo_url').eq('id', dbUser?.org_id).single();
+
   const { data: visitors } = await supabase
     .from('visitors')
     .select('*')
+    .eq('org_id', dbUser?.org_id)
     .order('created_at', { ascending: false });
 
   return (
@@ -38,10 +43,25 @@ export default async function VisitorsPage() {
               </tr>
             ) : visitors.map(v => (
               <tr key={v.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-base)]/50 transition">
-                <td className="p-4 font-medium">{v.name}</td>
+                <td className="p-4 font-medium flex items-center gap-3">
+                  {v.photo_url ? (
+                     <img src={v.photo_url} alt="Profile" className="w-10 h-10 rounded-full object-cover border border-[var(--border)] shadow-sm" />
+                  ) : (
+                     <div className="w-10 h-10 rounded-full bg-[var(--primary-light)] text-[var(--primary)] text-lg flex items-center justify-center font-bold">
+                        {v.name.charAt(0).toUpperCase()}
+                     </div>
+                  )}
+                  <div className="flex flex-col">
+                    <span>{v.name}</span>
+                    <span className="text-xs text-[var(--text-muted)] font-normal">{v.company || ''}</span>
+                  </div>
+                </td>
                 <td className="p-4 text-[var(--text-muted)]">{v.email || '—'}</td>
                 <td className="p-4">{v.phone || '—'}</td>
-                <td className="p-4 text-[var(--text-muted)]">{new Date(v.created_at).toLocaleDateString()}</td>
+                <td className="p-4 text-[var(--text-muted)] flex items-center justify-between">
+                   <span>{new Date(v.created_at).toLocaleDateString()}</span>
+                   <PrintBadgeButton visitor={v} orgName={org?.name || 'VMS Provider'} orgLogo={org?.logo_url || ''} />
+                </td>
               </tr>
             ))}
           </tbody>

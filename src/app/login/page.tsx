@@ -137,6 +137,16 @@ export default function LoginPage() {
           </svg>
           Microsoft (Azure AD)
         </button>
+
+        <div className="mt-8 pt-6 border-t border-[var(--border)] text-center">
+          <p className="text-sm text-[var(--text-muted)] mb-3">Is your organization new to VMS?</p>
+          <button 
+            onClick={() => router.push('/onboarding')}
+            className="text-[var(--primary)] font-medium hover:text-[var(--primary-hover)] hover:underline flex items-center justify-center w-full"
+          >
+            Create Your Workspace <ArrowRight className="w-4 h-4 ml-1" />
+          </button>
+        </div>
       </motion.div>
     </div>
   );
