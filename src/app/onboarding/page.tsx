@@ -77,6 +77,13 @@ export default function OnboardingPage() {
     } else {
       user = existingUser || user; // Inherit the actively logged in user if they simply got looped back
     }
+    
+    // Explicit type guard to appease TS compiler
+    if (!user) {
+      setError('User context missing. Please try logging in again.');
+      setLoading(false);
+      return;
+    }
 
     // 2. Insert Organization manually with a client generated UUID
     const orgId = crypto.randomUUID();
